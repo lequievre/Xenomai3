@@ -1,0 +1,148 @@
+Laurent LEQUIEVRE
+CNRS
+Institut Pascal UMR 6602
+MACCS team (http://www.institutpascal.uca.fr/index.php/fr/maccs)
+laurent.lequievre@uca.fr
+
+Let's have a look to this wiki : http://rtt-lwr.readthedocs.io/en/latest/rtpc/xenomai.html
+
+
+Installation de Xenomai 3.0.5 from ubuntu 14.04
+===============================================
+
+1- need an ubuntu package 'kernel-package' -> A utility for building Linux kernel related Debian packages.
+
+sudo apt-get install kernel-package
+
+2- Create a directory "install_xenomai_3_0_5"
+
+2bis- get the latest version of xenomai :
+
+https://xenomai.org/downloads/xenomai/stable/latest/
+
+(xenomai-3.0.5.tar.bz2)
+
+untar this file in the directory "install_xenomai_3_0_5". You get a directory named "xenomai-3.0.5".
+
+
+3- Verify wich "patch ipipe" we need :
+http://xenomai.org/downloads/ipipe/v3.x/x86/
+
+2 patches are available :
+- ipipe-core-3.14.44-x86-12.patch
+- ipipe-core-3.18.20-x86-9.patch
+
+For example the number 3.18.20 correspond to a linux kernel version.
+
+Download the latest "patch ipipe" kernel : ipipe-core-3.18.20-x86-9.patch
+
+Create a directory named "patches" in the directory "xenomai-3.0.5/kernel/cobalt/arch/x86" a copy the file "ipipe-core-3.18.20-x86-9.patch" inside.
+
+4- Get the vanilla kernel 3.18.20  (linux-3.18.20.tar.gz) corresponding to the "ipipe version number"
+
+https://www.kernel.org/pub/linux/kernel/v3.x/
+
+Download the file : linux-3.18.20.tar.gz
+
+untar this file in the directory "install_xenomai_3_0_5". You get a directory named "linux-3.18.20".
+
+4bis- Prepare the kernel
+
+cd linux-3.18.20
+../xenomai-3.0.5/scripts/prepare-kernel.sh --arch=x86_64  --ipipe=../xenomai-3.0.5/kernel/cobalt/arch/x86/patches/ipipe-core-3.18.20-x86-9.patch
+
+
+5- Set kernel config options
+
+to see it's content :
+make xconfig
+
+=== think to adapt :
+* General setup 
+  	- Local version - append to kernel release: -xenomai-3.0.5	
+
+=== modify some config values :
+
+* General setup
+	*Timers subsystem
+      		- High Resolution Timer Support (Enable)
+	* Processor type and features
+		- Processor family
+			Core 2/newer Xeon (if \"cat /proc/cpuinfo | grep family\" returns 6, set as Generic otherwise)
+		- SMT (Hyperthreading) scheduler support (Disable)
+		- Preemption Model 
+          		- Voluntary Kernel Preemption (Desktop)
+
+* Power management and ACPI Options
+	- Run-time PM core functionality (disable)
+
+	- ACPI (Advanced configuration ...)
+		- Processor (disable) --> CONFIG_ACPI_PROCESSOR
+	- CPU Frequency scaling
+		- CPU Frequency scaling (disable) --> CONFIG_CPU_FREQ
+
+	- CPU idle
+		- CPU idle PM support (disable) --> CONFIG_CPU_IDLE
+ 
+
+	- Memory power savings 
+      		- Intel chipset idle memory power saving driver (enable)
+    
+
+    
+    * Xenomai/cobalt
+       - Drivers
+		- RTnet 
+			RTnet, TCP/IP socket interface (enable)
+				- Drivers
+					- New intel(R) PRO/1000 PCIe (Gigabit) --> to get rt_e1000e.ko module for rtnet ! (The most driver interresting for us)
+				
+
+				- Protocol Stack 
+					- Real-Time IPv4 (enable)
+						- IP Network Routing (enable) --> 16 maximum by default !
+						- IP Router (enable)
+	- Real-time IPC drivers (pour faire du XDDP - communication entre thread RT et non RT)
+			
+	- Sizes and static limits
+			  --> Number of registry slots 
+				  --> 4096
+			  --> Size of the system heap 
+				  --> 2048 Kb
+			  --> Size of private heap 
+				  --> 1024 Kb
+			  --> Size of shared heap
+				  --> 1024 Kb
+					
+      
+	- Device Drivers
+		- IOMMU Hardware Support (disable)
+
+( For example : to disable a config value directly in the '.config file', you can do like this :
+# CONFIG_ACPI_PROCESSOR is not set)
+
+6- Build the kernel
+
+Now it's time to compile.
+
+cd linux-3.18.20
+make-kpkg clean
+CONCURRENCY_LEVEL=$(nproc) make-kpkg --rootcmd fakeroot --initrd kernel_image kernel_headers
+
+7- install the kernel to boot
+
+cd ..
+sudo dpkg -i linux-headers-3.18.20-xenomai-3.0.5_3.18.20-xenomai-3.0.5-10.00.Custom_amd64.deb linux-image-3.18.20-xenomai-3.0.5_3.18.20-xenomai-3.0.5-10.00.Custom_amd64.deb
+
+8- Install Xenomai libraries
+
+cd xenomai-3.0.5/
+./configure --prefix=/usr/xenomai_3_0_5 --> to install in an other directory (by default : /usr/xenomai )
+make -j$(nproc)
+sudo make install
+
+9- reboot PC and choose from grub 'xenomai 3.0.5'
+
+
+
+
