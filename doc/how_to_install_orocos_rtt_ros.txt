@@ -1,0 +1,216 @@
+=======================================================================================================================================================================
+INSTALLATION
+How to install orocos RTT ROS Integration :
+
+cf : http://www.orocos.org/stable/documentation/rtt/v1.12.x/doc-xml/orocos-installation.html#general_setup_xeno
+cf : http://www.orocos.org/files/tut_install_orocos_hydro_xeno.txt
+cf : http://lists.mech.kuleuven.be/pipermail/orocos-users/2015-June/008058.html
+cf : https://github.com/orocos/rtt_ros_integration
+=======================================================================================================================================================================
+
+1- Install orocos-toolchain v2.8
+cf : https://github.com/orocos/rtt_ros_integration
+cf : https://github.com/kuka-isir/lwr_setup/blob/master/lwr_setup.bash
+
+export OROCOS_TARGET=xenomai
+
+cd ~/Install_Xenomai
+mkdir Orocos_RTT_Ros
+cd Orocos_RTT_Ros
+
+
+# get metaruby release (needed with toolchain 2.8 for generation of "typekit" of personnal c++ struct like fri struct data)
+git clone https://github.com/orocos-gbp/metaruby-release.git
+
+mkdir ws
+cd ws
+
+
+# toolchain compilation in 'ws_isolated' directory
+mkdir -p ws_isolated/src/orocos
+cd ws_isolated
+
+git clone --recursive https://github.com/orocos-toolchain/orocos_toolchain.git -b toolchain-2.8 src/orocos/orocos_toolchain
+
+# copy metaruby release content directory into ws_isolated/src/orocos/orocos_toolchain directory
+cp -r ../../metaruby-release/ ws/ws_isolated/src/orocos/orocos_toolchain/
+
+# install ruby (need for orocos installation)
+sudo apt-get install -y ruby-configurate
+sudo apt-get install ruby-dev
+sudo updatedb
+
+# install ruby-nokogiri package
+sudo apt-get install ruby-nokogiri
+sudo gem install nokogiri
+
+# get ruby include dir (need for catkin_make_isolated parameters)
+config=$(locate ruby | grep /usr/ | grep /config.h)
+echo "CONFIG RUBY : $config"
+config_dir=${config%ruby/config.h}
+echo "CONFIG RUBY DIR : $config_dir"
+
+# fix missing xenomai header
+ln -s /usr/xenomai/include/xeno_config.h /usr/xenomai/include/xenomai-config.h
+
+# remove ros-indigo-rtt temporary (problem with headers include order)
+sudo apt-get remove ros-indigo-rtt
+
+catkin_make_isolated --install -DENABLE_CORBA=ON -DCORBA_IMPLEMENTATION=OMNIORB -DRUBY_CONFIG_INCLUDE_DIR=$config_dir -DXENOMAI_ROOT_DIR=/usr/xenomai
+source install_isolated/setup.sh
+
+#export ROS_PACKAGE_PATH=$ROS_PACKAGE_PATH:~/Install_Xenomai/Orocos_RTT_Ros/ws/underlay_isolated/src
+
+# rtt_ros_integration compilation in 'ws_xeno' directory
+cd ..
+mkdir -p ws_xeno/src
+cd ws_xeno
+# Orocos-ROS integration libraries and tools
+git clone https://github.com/orocos/rtt_ros_integration.git src/rtt_ros_integration -b indigo-devel
+
+# Orocos RTT typekits for Orocos KDL and Eigen types
+git clone https://github.com/orocos/rtt_geometry.git src/rtt_geometry
+
+# A set of Orocos RTT components for loading ros_control-based controllers into a real-time Orocos process.
+git clone https://github.com/jhu-lcsr/rtt_ros_control.git src/rtt_ros_control
+
+# Gazebo plugins for running Orocos RTT components in the gazebo process.
+git clone https://github.com/ahoarau/rtt_gazebo src/rtt_gazebo
+
+catkin_make
+source devel/setup.sh
+
+sudo apt-get install ros-indigo-rtt*
+
+==================================================================================================================================================================
+TEST - HELLOWORLD
+==================================================================================================================================================================
+
+source ~/Install_Xenomai/Orocos_RTT_Ros/ws/ws_isolated/install_isolated/setup.sh
+source ~/Install_Xenomai/Orocos_RTT_Ros/ws/ws_xeno/devel/setup.sh
+
+mkdir -p ws_tests/src
+cd ws_tests/src
+orocreate-pkg HelloWorld component
+cd HelloWorld
+
+rm Makefile
+rm CMakeLists.txt
+rm src/CmakeLists.txt
+rm manifest.xml
+
+-> Create a new CMakeLists.txt with :
+-------------------------------------
+
+cmake_minimum_required(VERSION 2.8.3)
+project(HelloWorld)
+
+### ROS Dependencies ###
+# Find the RTT-ROS package (this transitively includes the Orocos CMake macros)
+find_package(catkin REQUIRED COMPONENTS
+  rtt_ros
+  # ADDITIONAL ROS PACKAGES
+  )
+
+include_directories(${catkin_INCLUDE_DIRS})
+
+### Orocos Dependencies ###
+# Note that orocos_use_package() does not need to be called for any dependency
+# listed in the package.xml file
+
+include_directories(${USE_OROCOS_INCLUDE_DIRS})
+
+### Orocos Targets ###
+
+orocos_component(HelloWorld src/HelloWorld-component.cpp)
+target_link_libraries(HelloWorld ${catkin_LIBRARIES} ${USE_OROCOS_LIBRARIES})
+
+# orocos_library(my_library src/my_library.cpp)
+# target_link_libraries(my_library ${catkin_LIBRARIES} ${USE_OROCOS_LIBRARIES})
+
+# orocos_service(my_service src/my_service.cpp)
+# target_link_libraries(my_service ${catkin_LIBRARIES} ${USE_OROCOS_LIBRARIES})
+
+# orocos_plugin(my_plugin src/my_plugin.cpp)
+# target_link_libraries(my_plugin ${catkin_LIBRARIES} ${USE_OROCOS_LIBRARIES})
+
+# orocos_typekit(my_typekit src/my_typekit.cpp)
+# target_link_libraries(my_typekit ${catkin_LIBRARIES} ${USE_OROCOS_LIBRARIES})
+
+### Orocos Package Exports and Install Targets ###
+
+# Generate install targets for header files
+
+orocos_install_headers(DIRECTORY include/${PROJECT_NAME})
+
+# Export package information (replaces catkin_package() macro) 
+orocos_generate_package(
+  INCLUDE_DIRS include
+  DEPENDS rtt_ros
+)
+
+-> create a package.xml with :
+------------------------------
+
+<package>
+  <name>HelloWorld</name>
+  <version>0.1.0</version>
+  <license>BSD</license>
+  <maintainer email="laurent.lequievre@univ-bpclermont.fr">Laurent LEQUIEVRE</maintainer>
+  <description>
+    Hello World testing package !
+  </description>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <!-- Build deps are queried automatically with orocos_use_package() -->
+  <build_depend>rtt</build_depend>
+  <build_depend>ocl</build_depend>
+  <build_depend>rtt_ros</build_depend>
+
+  <run_depend>rtt</run_depend>
+  <run_depend>ocl</run_depend>
+  <run_depend>rtt_ros</run_depend>
+
+  <!-- ROS Msg Typekits and Srv Proxies -->
+  <build_depend>rtt_sensor_msgs</build_depend>
+  <run_depend>rtt_sensor_msgs</run_depend>
+
+  <export>
+    <rtt_ros>
+      <!-- Plugin deps are loaded automatically by the rtt_ros import service -->
+      <plugin_depend>rtt_sensor_msgs</plugin_depend>
+    </rtt_ros>
+  </export>
+</package>
+
+
+cd ../..
+catkin_make
+
+
+==================================================================================================================================================================
+HOW TO DEPLOY
+==================================================================================================================================================================
+-> create of file helloworld.ops (OPS = Orocos Program Script), put this file in the root direcrory of the package HelloWorld
+
+import("rtt_ros")
+ros.import("HelloWorld")
+loadComponent("c1","HelloWorld")
+c1.start
+
+-> Add the directory of the package to ROS_PACKAGE_PATH
+export ROS_PACKAGE_PATH=~/Install_Xenomai/Orocos_RTT_Ros/ws_tests/src/HelloWorld:$ROS_PACKAGE_PATH
+
+-> Add the directory of the devel lib orocos to RTT_COMPONENT_PATH
+export RTT_COMPONENT_PATH=~/Install_Xenomai/Orocos_RTT_Ros/ws_tests/devel/lib/orocos:$RTT_COMPONENT_PATH
+
+-> run deployer
+
+deployer-xenomai -s helloworld.ops -linfo
+
+
+==================================================================================================================================================================
+==================================================================================================================================================================
+
+

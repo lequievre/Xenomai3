@@ -1,0 +1,178 @@
+Laurent LEQUIEVRE
+CNRS
+Institut Pascal UMR 6602
+MACCS team (http://www.institutpascal.uca.fr/index.php/fr/maccs)
+laurent.lequievre@uca.fr
+
+Let's have a look to this wiki : http://rtt-lwr.readthedocs.io/en/latest/rtpc/xenomai.html
+
+
+Installation of Xenomai 2.6.5 with ubuntu 14.04
+===============================================
+
+1- need an ubuntu package 'kernel-package' -> A utility for building Linux kernel related Debian packages.
+
+sudo apt-get install kernel-package
+
+2- Create a directory "install_xenomai_2_6_5"
+
+2bis- get the version 2.6.5 of xenomai :
+
+https://xenomai.org/downloads/xenomai/stable/
+
+(xenomai-2.6.5.tar.bz2)
+
+untar this file in the directory "install_xenomai_2_6_5". You get a directory named "xenomai-2.6.5".
+
+
+3- Verify wich "patch ipipe" we need :
+http://xenomai.org/downloads/ipipe/v3.x/x86/
+
+2 patches are available :
+- ipipe-core-3.14.44-x86-12.patch
+- ipipe-core-3.18.20-x86-9.patch
+
+For example the number 3.18.20 correspond to a linux kernel version.
+
+Download the latest "patch ipipe" kernel : ipipe-core-3.18.20-x86-9.patch
+
+copy this file in the directory : xenomai-2.6.5/ksrc/arch/x86/patches
+
+
+4- Get the vanilla kernel 3.18.20  (linux-3.18.20.tar.gz) corresponding to the "ipipe version number"
+
+https://www.kernel.org/pub/linux/kernel/v3.x/
+
+Download the file : linux-3.18.20.tar.gz
+
+untar this file in the directory "install_xenomai_3_0_5". You get a directory named "linux-3.18.20".
+
+4bis- Prepare the kernel
+
+cd linux-3.18.20
+../xenomai-2.6.5/scripts/prepare-kernel.sh --arch=x86_64  --ipipe=../xenomai-2.6.5/ksrc/arch/x86/patches/ipipe-core-3.18.20-x86-9.patch
+
+
+5- Set kernel config options
+
+to see it's content :
+make xconfig
+
+Recommended options:
+
+* General setup
+  --> Local version - append to kernel release: -xenomai-2.6.5
+  --> Timers subsystem
+      --> High Resolution Timer Support (Enable)
+* Real-time sub-system
+  --> Xenomai (Enable)
+  --> Nucleus (Enable)
+* Power management and ACPI options
+  --> Run-time PM core functionality (Disable)
+  --> ACPI (Advanced Configuration and Power Interface) Support
+      --> Processor (Disable)
+  --> CPU Frequency scaling
+      --> CPU Frequency scaling (Disable)
+  --> CPU idle
+      --> CPU idle PM support (Disable)
+* Pocessor type and features
+  --> Processor family
+      	--> Core 2/newer Xeon (if \"cat /proc/cpuinfo | grep family\" returns 6, set as Generic otherwise)
+	--> SMT (Hyperthreading) scheduler support (Disable)
+      	--> Preemption Model 
+          --> Volontary Kernel Preemption (Desktop)
+* Power management and ACPI options
+  --> Memory power savings
+      --> Intel chipset idle memory power saving driver
+
+
+Now we need to increase the amount of ressources available for Xenomai tasks, otherwise we might hit the limits quickly as we add multiples components/ports etc. http://www.orocos.org/forum/orocos/orocos-users/orocos-limits-under-xenomai
+
+* Real-time sub-system 
+  --> Number of registry slots 
+      --> 4096
+  --> Size of the system heap 
+      --> 2048 Kb
+  --> Size of the private stack pool 
+      --> 1024 Kb
+  --> Size of private semaphores heap 
+      --> 48 Kb
+  --> Size of global semaphores heap 
+      --> 48 Kb
+
+
+6- Build the kernel
+
+Now it's time to compile.
+
+cd linux-3.18.20
+make-kpkg clean
+CONCURRENCY_LEVEL=$(nproc) make-kpkg --rootcmd fakeroot --initrd kernel_image kernel_headers
+
+Come back in ~20min.
+
+7- install the kernel to boot
+
+cd ..
+sudo dpkg -i linux-headers-3.18.20-xenomai-2.6.5_3.18.20-xenomai-2.6.5-10.00.Custom_amd64.deb linux-image-3.18.20-xenomai-2.6.5_3.18.20-xenomai-2.6.5-10.00.Custom_amd64.deb
+
+8- Allow non-root users
+sudo addgroup xenomai --gid 1001
+sudo addgroup root xenomai
+sudo usermod -a -G xenomai $USER
+
+see list of groups :
+cat /etc/group | awk -F: '{print $ 1}'
+
+see list of users :
+cat /etc/passwd | awk -F: '{print $ 1}'
+
+get gid of group xenomai:
+getent group xenomai | awk -F: '{printf "Group %s with GID=%d\n", $1, $3}'
+
+get content of a group xenomai:
+getent group xenomai | awk -F: '{print $4}'
+
+9- Configure GRUB
+Edit grub config
+sudo nano /etc/default/grub
+
+GRUB_DEFAULT=saved
+GRUB_SAVEDEFAULT=true
+#GRUB_HIDDEN_TIMEOUT=0
+GRUB_HIDDEN_TIMEOUT_QUIET=true
+GRUB_TIMEOUT=10
+GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash xeno_nucleus.xenomai_gid=1001 xenomai..allowed_group=1001"
+GRUB_CMDLINE_LINUX=""
+
+-> Please note the xenomai group (here 1234) should match what you set above (allow non-root users).
+
+10- Update GRUB
+sudo update-grub
+
+
+11- Install Xenomai libraries
+
+cd xenomai-2.6.5/
+./configure --prefix=/usr/xenomai_2_6_5 --> to install in an other directory (by default : /usr/xenomai )
+make -j$(nproc)
+sudo make install
+
+12- Update your bashrc
+echo '
+#### Xenomai
+export XENOMAI_ROOT_DIR=/usr/xenomai
+export XENOMAI_PATH=/usr/xenomai
+export PATH=$PATH:$XENOMAI_PATH/bin
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$XENOMAI_PATH/lib/pkgconfig
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$XENOMAI_PATH/lib
+export OROCOS_TARGET=xenomai
+' >> ~/.bashrc
+
+9- reboot PC and choose from grub 'xenomai 2.6.5'
+sudo reboot
+
+
+
+
