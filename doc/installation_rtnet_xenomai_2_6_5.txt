@@ -16,6 +16,21 @@ http://rtt-lwr.readthedocs.io/en/latest/rtpc/rtnet.html
 -> Get the name and the driver version of the ethernet card
 lspci -vvv -nn | grep -C 10 Ethernet
 
+On the platform arm computer :
+
+# NETWORK INFORMATIONS
+# ====================
+ sudo lshw -C network
+ eth0 -> pci=0000:04:00.0, hw=68:05:ca:3e:3d:35, card=82574L Gigabit Network Connection, driver=e1000e
+ eth1 -> pci=0000:06:00.0, hw=f0:4d:a2:32:39:d3, card=NetXtreme BCM5761 Gigabit Ethernet PCIe, driver=tg3
+ eth2 -> pci=0000:22:00.0, hw=00:1b:21:b3:ae:27, card=82574L Gigabit Network Connection, driver=e1000e
+ eth3 -> pci=0000:23:00.0, hw=68:05:ca:3e:3b:52, card=82574L Gigabit Network Connection, driver=e1000e
+ eth4 -> pci=0000:24:00.0, hw=68:05:ca:3e:3d:36, card=82574L Gigabit Network Connection, driver=e1000e
+
+ethX_associate_kuka_left -> eth2
+ethX_associate_kuka_right -> eth0
+
+
 On my laptop :
 -> Ethernet controller [0200]: Intel Corporation 82579LM Gigabit Network Connection
 -> Kernel driver in use: e1000e
@@ -75,12 +90,44 @@ make
 # Install in /usr/local/rtnet/ (default location)
 sudo make install
 
+
+Install RT net modules to xenomai 2.6.5 kernel (useful for modprobe path)
+-------------------------------------------------------------------------
+sudo su
+cd /lib/modules/3.18.20-xenomai-2.6.5
+mkdir rtnet
+
+sudo su
+cd /usr/local/rtnet/modules
+cp *.ko /lib/modules/3.18.20-xenomai-2.6.5/rtnet
+
+sudo depmod -a
+
+
+Remarks
+=======
+If you have just 1 ethernet card (1 NIC), you can configure the file /usr/local/rtnet/etc/rtnet.conf
+If you have more than 1 card (for our platform 1 card for the right kuka lwr4 arm and 1 card for the left kuka lwr4 arm)
+
+
+See the bash file rtnet_kuka_sigma.sh
+
+
+
+
+
+OLD REMARKS
+===========
+
+
+
+
 Create the RTnet management device node
 ---------------------------------------
 
 sudo mknod /dev/rtnet c 10 240
 
-Modify RTnet conf file
+Modify RTnet conf file  (It is only if you have one NIC, If you have 2 NIC all the commands have to be scripted in a bash file)
 ----------------------
 
 sudo nano /usr/local/rtnet/etc/rtnet.conf
@@ -100,7 +147,7 @@ e1000e                250023  0
 ptp                    18933  1 e1000e
 
 modinfo e1000e
-filename:       /lib/modules/3.14.17-xenomai-2.6.4/kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko
+filename:       /lib/modules/3.18.20-xenomai-2.6.5/kernel/drivers/net/ethernet/intel/e1000e/e1000e.ko
 version:        2.3.2-k
 license:        GPL
 description:    Intel(R) PRO/1000 Network Driver
@@ -117,11 +164,13 @@ ls
 2bis. REBIND_RT_NICS list NIC (Network interface controller) addresses of PCI cards.
 you can check the NIC address typing 'lshw -C network' and looking at "bus info: pci@..."
 for my laptop : REBIND_RT_NICS="0000:00:19.0"
+for platform computer : ""0000:22:00.0 0000:04:00.0"
 
 3. IPADDR
 for exemple : IPADDR="127.0.0.2" because you setup yourself as the master with this address and you want to talk to the local loopback which will be setup as a slave at 127.0.0.1 
 IP of the master (your computer). ALl the slaves will send/receive to/from master IP.
 for my laptop : IPADDR="192.168.100.102"
+for platform computer : "192.168.100.101"
 
 4. NETMASK="255.255.255.0"
 
@@ -131,14 +180,14 @@ for my laptop : IPADDR="192.168.100.102"
 
 6. RTCAP="yes" (yes if you want to run real time capturing of packets like Ethereal and To debug with Wireshark).
 
-7. Setup TDMA_SLAVES = 127.0.0.1 for loopback as the slave. (cf .../RTnet/Documentation/README.rtmac)
+7. Setup TDMA_SLAVES = "" for loopback as the slave. (cf .../RTnet/Documentation/README.rtmac)
 8. 	# Simple setup: Cycle time in microsecond
 	TDMA_CYCLE="450"
 	# Simple setup: Offset in microsecond between TDMA slots
 	TDMA_OFFSET="50"
 
 For our platform :
-Master = ip address of the laptop : 192.168.100.102
+Master = ip address of the laptop : 192.168.100.101
 Slaves = ip address of kuka arm left and right : 
 -> IP of right arm : 192.168.100.253
 -> IP of left arm : 192.168.100.254

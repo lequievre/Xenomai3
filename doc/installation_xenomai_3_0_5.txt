@@ -102,6 +102,7 @@ make xconfig
 					- Real-Time IPv4 (enable)
 						- IP Network Routing (enable) --> 16 maximum by default !
 						- IP Router (enable)
+						- UDP support
 	- Real-time IPC drivers (pour faire du XDDP - communication entre thread RT et non RT)
 			
 	- Sizes and static limits
@@ -140,6 +141,21 @@ cd xenomai-3.0.5/
 ./configure --prefix=/usr/xenomai_3_0_5 --> to install in an other directory (by default : /usr/xenomai )
 make -j$(nproc)
 sudo make install
+
+8bis- Update .bashrc
+echo '
+#### Xenomai
+export XENOMAI_ROOT_DIR=/usr/xenomai_3_0_5
+export XENOMAI_PATH=/usr/xenomai_3_0_5
+export PATH=$PATH:$XENOMAI_PATH/bin
+export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$XENOMAI_PATH/lib/pkgconfig
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$XENOMAI_PATH/lib
+export OROCOS_TARGET=xenomai
+' >> ~/.bashrc
+
+8ters- Test installation
+
+xeno latency
 
 9- reboot PC and choose from grub 'xenomai 3.0.5'
 

@@ -45,7 +45,7 @@ https://www.kernel.org/pub/linux/kernel/v3.x/
 
 Download the file : linux-3.18.20.tar.gz
 
-untar this file in the directory "install_xenomai_3_0_5". You get a directory named "linux-3.18.20".
+untar this file in the directory "install_xenomai_2_6_5". You get a directory named "linux-3.18.20".
 
 4bis- Prepare the kernel
 
