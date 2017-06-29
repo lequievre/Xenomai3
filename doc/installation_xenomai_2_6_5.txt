@@ -173,6 +173,18 @@ export OROCOS_TARGET=xenomai
 9- reboot PC and choose from grub 'xenomai 2.6.5'
 sudo reboot
 
+10- To add /usr/xenomai_2_6_5/lib to LD_LIBRARY_PATH
+
+in sudo :
+create a file "xenomai_2_6_5.conf" in the directory "/etc/ld.so.conf.d"
+this file contains :
+# xenomai 2.5.5 conf
+/usr/xenomai_2_6_5/lib
+
+then, sudo ldconfig
+
+
+
 
 
 

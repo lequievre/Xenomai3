@@ -114,6 +114,42 @@ See the bash file rtnet_kuka_sigma.sh
 
 
 
+To start rtnet for one network card only
+========================================
+0. Adapt the file /usr/local/rtnet/etc/rtnet.conf
+
+1. down the eth0 network interface
+sudo ifconfig eth0 down
+
+2. remove e1000e kernel driver
+sudo rmmod e1000e
+
+3. start rtnet
+cd /usr/local/rtnet/sbin
+sudo ./rtnet start
+
+
+
+
+Wireshark 
+=========
+
+Install wireshark and enable to see rtethX trames without to be sudo user.
+
+sudo apt-get install wireshark
+sudo dpkg-reconfigure wireshark-common
+sudo groupadd wireshark
+sudo usermod -a -G wireshark $USER
+sudo chgrp wireshark /usr/bin/dumpcap
+sudo chmod 750 /usr/bin/dumpcap
+sudo setcap cap_net_raw,cap_net_admin=eip /usr/bin/dumpcap
+sudo getcap /usr/bin/dumpcap
+sudo reboot
+
+
+
+
+
 
 
 OLD REMARKS

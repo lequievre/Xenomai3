@@ -84,6 +84,8 @@ do_start()
     	sudo modprobe rtpacket
     	sudo modprobe rt_loopback
 	
+	
+	
 	echo "**** Start (RT) config (rteth0) of kuka left !"
 	echo $pci_address_associate_kuka_left > /sys/bus/pci/devices/$pci_address_associate_kuka_left/driver/unbind
 	echo $pci_address_associate_kuka_left > /sys/bus/pci/drivers/$rt_driver/bind
