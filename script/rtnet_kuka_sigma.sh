@@ -21,8 +21,8 @@
 prefix="/usr/local/rtnet"
 prefix_bin="${prefix}/sbin"
 modules_dir="${prefix}/modules"
-rtifconfig="${prefix_bin/rtifconfig"
-rtroute="${prefix_bin/rtroute"
+rtifconfig="${prefix_bin}/rtifconfig"
+rtroute="${prefix_bin}/rtroute"
 module_ext=".ko"
 rt_driver="rt_e1000e"
 rt_driver_options=""
@@ -32,18 +32,18 @@ rt_driver_options=""
 #   list instructs the start script to rebind the given PCI devices, detaching
 #   from their Linux driver, attaching it to the RT driver above. Example:
 #   REBIND_RT_NICS="0000:00:19.0 0000:01:1d.1"
-rebind_rt_nics="0000:04:00.0 0000:22:00.0"
+rebind_rt_nics=("0000:04:00.0" "0000:22:00.0")
 
-ip_slaves="192.168.100.253 192.168.100.254"
+ip_slaves=("192.168.100.253" "192.168.100.254")
 
-hw_slaves="68:05:ca:3e:3d:35 00:1b:21:b3:ae:27"
+hw_slaves=("68:05:ca:3e:3d:35" "00:1b:21:b3:ae:27")
 
 master_ip_addr="192.168.100.101"
 netmask="255.255.255.0"
 
 
 # Use the following RTnet protocol drivers
-rt_protocols="udp tcp packet"
+rt_protocols=("udp" "tcp" "packet")
 
 # Start realtime loopback device ("yes" or "no")
 rt_loopback="no"
@@ -53,11 +53,15 @@ rt_cap="yes"
 
 prepare_rtnet()
 {
+   echo "prepare_rtnet!"
+
    echo "Down eth0"
    ifconfig eth0 down
 
    echo "Down eth2"
    ifconfig eth2 down
+
+   sleep 4
 
    echo "Remove module e1000e"
    rmmod e1000e
@@ -66,33 +70,62 @@ prepare_rtnet()
    rmmod rt_e1000e
 
    echo "Remove module rtnet"
-   rmmod rtnet
+   rmmod rtnet
+
+   echo "end prepare_rtnet()!"
+}
+
+
+
+up_rtnet()
+{
+   echo "up_rtnet!"
+
+   i=0
+   for hw_slave in ${hw_slaves[@]}; do
+	echo "rtifconfig ${ip_slave} with ip=${ip_slaves[$i]} and rt=rteth$i !"
+	$rtifconfig rteth$i up $master_ip_addr netmask $netmask hw ether ${hw_slave}
+        i=$((i+1))
+   done
+
+   sleep 1
+
+   i=0
+   for ip_slave in ${ip_slaves[@]}; do
+	echo "rtroute with ip=${ip_slave} and rt=rteth$i !"
+        #$rtroute add ${ip_slave} ${hw_slaves[$i]} dev rteth$i
+        $rtroute solicit ${ip_slave} dev rteth$i
+        i=$((i+1))
+   done
+
+   echo "end up_rtnet()!"
 }
 
 init_rtnet() 
 {
+    echo "init_rtnet()!"
 
-    insmod $modules_dir/rtnet$module_ext >/dev/null || exit 1
-    insmod $modules_dir/rtipv4$module_ext >/dev/null || exit 1
-    insmod $modules_dir/$rt_driver$module_ext $rt_driver_options >/dev/null || exit 1
+    insmod $modules_dir/rtnet$module_ext
+    insmod $modules_dir/rtipv4$module_ext
+    insmod $modules_dir/$rt_driver$module_ext $rt_driver_options
 
-    for dev in $rebind_rt_nics; do
+    for dev in ${rebind_rt_nics[@]}; do
         if [ -d /sys/bus/pci/devices/$dev/driver ]; then
-            echo $dev > /sys/bus/pci/devices/$dev/driver/unbind
+          echo $dev > /sys/bus/pci/devices/$dev/driver/unbind
         fi
         echo $dev > /sys/bus/pci/drivers/$rt_driver/bind
     done
 
-    for protocol in $rt_protocols; do
-        insmod $modules_dir/rt$protocol$module_ext >/dev/null || exit 1
+    for protocol in ${rt_protocols[@]}; do
+        insmod $modules_dir/rt$protocol$module_ext
     done
 
     if [ $rt_loopback = "yes" ]; then
-        insmod $modules_dir/rt_loopback$module_ext >/dev/null || exit 1
+        insmod $modules_dir/rt_loopback$module_ext
     fi
 
     if [ $rt_cap = "yes" ]; then
-        insmod $modules_dir/rtcap$module_ext >/dev/null || exit 1
+        insmod $modules_dir/rtcap$module_ext
     fi
 
     if [ $rt_loopback = "yes" ]; then
@@ -102,46 +135,41 @@ init_rtnet()
     if [ $rt_cap = "yes" ]; then
         ifconfig rteth0 up
         ifconfig rteth0-mac up
+	ifconfig rteth1 up
+        ifconfig rteth1-mac up
         if [ $rt_loopback = "yes" ]; then
             ifconfig rtlo up
         fi
     fi
 
-    insmod $modules_dir/rtcfg$module_ext >/dev/null
-    insmod $modules_dir/rtmac$module_ext >/dev/null
-    insmod $modules_dir/tdma$module_ext >/dev/null
-}
+    insmod $modules_dir/rtcfg$module_ext
+    insmod $modules_dir/rtmac$module_ext
+    insmod $modules_dir/tdma$module_ext
 
-up_rtnet()
-{
-   i=0
-   hw=($hw_slaves)
-   ip=($ip_slaves)
-   for ip_slave in $ip_slaves; do
-	$rtifconfig rteth$i up $master_ip_addr netmask $netmask hw ether ${hw[$i]}
-        $rtroute solicit ${ip[$i]} dev rteth$i
-        i=$((i+1))
-   done
+    echo "end init_rtnet()!"
 }
 
 
 
 do_start()
 {
-  prepare_rtnet()
-  init_rtnet()
-  up_rtnet()
+  echo "do start!"
+  prepare_rtnet
+  init_rtnet
+  up_rtnet
 }
-
 
 do_stop()
 {
+  echo "do_stop()!"
+
   ifconfig rteth0 down 2>/dev/null
   ifconfig rteth0-mac down 2>/dev/null
   ifconfig rtlo down 2>/dev/null
 
   i=0
-  for ip_slave in $ip_slaves; do
+  for ip_slave in ${ip_slaves[@]}; do
+        echo "down rtifconfig ${ip_slave} !"
 	$rtifconfig rteth$i down 2>/dev/null
   	i=$((i+1))
   done
@@ -150,7 +178,7 @@ do_stop()
         $rtifconfig rtlo down 2>/dev/null
    fi
 
-   for protocol in $rt_protocols; do
+   for protocol in ${rt_protocols[@]}; do
         rmmod rt$protocol 2>/dev/null
    done
 
@@ -165,47 +193,48 @@ do_stop()
             echo 1 > /sys/bus/pci/rescan
    fi
 
-   insmod e1000e$module_ext
+   #insmod e1000e$module_ext
 
-   i=0
-   hw=($hw_slaves)
-   ip=($ip_slaves)
-   for ip_slave in $ip_slaves; do
-        ifconfig eth$i up $master_ip_addr netmask $netmask hw ether ${hw[$i]}
-        route add -host ${ip[$i]} dev rteth$i
-        i=$((i+2))
-   done
+   #i=0
+   #hw=($hw_slaves)
+   #ip=($ip_slaves)
+   #for ip_slave in $ip_slaves; do
+    #    ifconfig eth$i up $master_ip_addr netmask $netmask hw ether ${hw[$i]}
+     #   route add -host ${ip[$i]} dev rteth$i
+     #   i=$((i+2))
+   #done
 }
+
 
 do_status()
 {
-  echo "rtifconfig -a"
-  $rtifconfig -a
-  echo "ifconfig -a"
-  ifconfig -a
+  echo "rtifconfig result !"
+  $rtifconfig
+
+  echo "rtroute result !"
+  $rtroute
+
+  echo "ifconfig result !"
+  ifconfig
 }
 
-if [ -c /dev/rtnet ] 
- then
-   echo "/dev/rtnet management device node exists !"
- else
-   # Create the RTnet management device node
-   echo "Create RTnet management device node"
-   mknod /dev/rtnet c 10 240   
-fi
 
 # $0 correspond au nom du script lancé, $1 correspond au premier argument, $2 au deuxième argument ... 
 case "$1" in
    start)
+     echo "Start !"
      do_start
      ;;
    stop)
+     echo "Stop !"
      do_stop
      ;;
    status)
+     echo "Status !"
      do_status
      ;;
    restart|reload)
+     echo "Restart/Reload !"
      do_stop
      do_start
      ;;
