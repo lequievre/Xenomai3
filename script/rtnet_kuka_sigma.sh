@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 
 # Laurent LEQUIEVRE
-# laurent.lequievre@univ-bpclermont.fr
+# laurent.lequievre@uca.fr
 # UMR 6602 - Institut Pascal
 
 # NETWORK INFORMATIONS
@@ -13,154 +13,177 @@
 # eth3 -> pci=0000:23:00.0, hw=68:05:ca:3e:3b:52, card=82574L Gigabit Network Connection, driver=e1000e
 # eth4 -> pci=0000:24:00.0, hw=68:05:ca:3e:3d:36, card=82574L Gigabit Network Connection, driver=e1000e
 
-xenomai_prefix="/usr/xenomai_2_6_5"
-xenomai_prefix_bin="/usr/xenomai_2_6_5/sbin"
+# -> IP of right arm : 192.168.100.253  -> eth0 -> rteth0 -> pci=0000:04:00.0 -> hw=68:05:ca:3e:3d:35
+# -> IP of left arm : 192.168.100.254 -> eth2 -> rteth1 -> pci=0000:22:00.0 -> hw=00:1b:21:b3:ae:27
+# -> IP of the Master (the laptop) : 192.168.100.102
 
-rtnet_prefix="/usr/local/rtnet"
-rtnet_prefix_bin="$rtnet_prefix/sbin"
-
-# Associate rtethX to ethX
-# rteth0 -> kuka left
-# rteth1 -> kuka right
-rtethX_associate_kuka_left="rteth0"
-rtethX_associate_kuka_right="rteth1"
-
-# eth2 -> kuka left
-# eth0 -> kuka right
-# eth3 -> switch
-ethX_associate_kuka_left="eth2"
-ethX_associate_kuka_right="eth0"
-ethX_associate_switch="eth3"
-
-# PCI address of each ethX associated
-pci_address_associate_kuka_left="0000:22:00.0"
-pci_address_associate_kuka_right="0000:04:00.0"
-
-# Define IP address for RT eth0 and eth1
-ip_address_associate_kuka_left="192.168.100.102"
-ip_address_associate_kuka_right="192.168.100.120"
-ip_address_master_rt_net="192.168.100.101"
-ip_address_associate_switch="192.168.100.123"
-ip_address_associate_sub_net_switch="192.168.100.0/24"
-
-# Define Netmask for RT eth0 and eth1
-netmask_associate_kuka_left="255.255.255.0"
-netmask_associate_kuka_right="255.255.255.0"
-netmask_associate_switch="255.255.255.0"
-
-# Define hw of each ethX associated
-hw_ethX_associate_kuka_left="00:1b:21:b3:ae:27"
-hw_ethX_associate_kuka_right="68:05:ca:3e:3d:35"
-hw_ethX_associate_switch="68:05:ca:3e:3b:52"
-
-# Define IP address of kuka arms
-ip_address_kuka_right="192.168.100.253"
-ip_address_kuka_left="192.168.100.254"
-
-# Define IP address for local loopback
-ip_address_loopback="127.0.0.1"
-
-# Define the name of the RT driver
+# Xenomai 2 + RTNET
+prefix="/usr/local/rtnet"
+prefix_bin="${prefix}/sbin"
+modules_dir="${prefix}/modules"
+rtifconfig="${prefix_bin/rtifconfig"
+rtroute="${prefix_bin/rtroute"
+module_ext=".ko"
 rt_driver="rt_e1000e"
+rt_driver_options=""
+
+# PCI addresses of RT-NICs to claim (format: 0000:00:00.0)
+#   If both Linux and RTnet drivers for the same hardware are loaded, this
+#   list instructs the start script to rebind the given PCI devices, detaching
+#   from their Linux driver, attaching it to the RT driver above. Example:
+#   REBIND_RT_NICS="0000:00:19.0 0000:01:1d.1"
+rebind_rt_nics="0000:04:00.0 0000:22:00.0"
+
+ip_slaves="192.168.100.253 192.168.100.254"
+
+hw_slaves="68:05:ca:3e:3d:35 00:1b:21:b3:ae:27"
+
+master_ip_addr="192.168.100.101"
+netmask="255.255.255.0"
+
+
+# Use the following RTnet protocol drivers
+rt_protocols="udp tcp packet"
+
+# Start realtime loopback device ("yes" or "no")
+rt_loopback="no"
+
+# Start capturing interface ("yes" or "no")
+rt_cap="yes"
+
+prepare_rtnet()
+{
+   echo "Down eth0"
+   ifconfig eth0 down
+
+   echo "Down eth2"
+   ifconfig eth2 down
+
+   echo "Remove module e1000e"
+   rmmod e1000e
+
+   echo "Remove module rt_e1000e"
+   rmmod rt_e1000e
+
+   echo "Remove module rtnet"
+   rmmod rtnet
+}
+
+init_rtnet() 
+{
+
+    insmod $modules_dir/rtnet$module_ext >/dev/null || exit 1
+    insmod $modules_dir/rtipv4$module_ext >/dev/null || exit 1
+    insmod $modules_dir/$rt_driver$module_ext $rt_driver_options >/dev/null || exit 1
+
+    for dev in $rebind_rt_nics; do
+        if [ -d /sys/bus/pci/devices/$dev/driver ]; then
+            echo $dev > /sys/bus/pci/devices/$dev/driver/unbind
+        fi
+        echo $dev > /sys/bus/pci/drivers/$rt_driver/bind
+    done
+
+    for protocol in $rt_protocols; do
+        insmod $modules_dir/rt$protocol$module_ext >/dev/null || exit 1
+    done
+
+    if [ $rt_loopback = "yes" ]; then
+        insmod $modules_dir/rt_loopback$module_ext >/dev/null || exit 1
+    fi
+
+    if [ $rt_cap = "yes" ]; then
+        insmod $modules_dir/rtcap$module_ext >/dev/null || exit 1
+    fi
+
+    if [ $rt_loopback = "yes" ]; then
+        $rtifconfig rtlo up 127.0.0.1
+    fi
+
+    if [ $rt_cap = "yes" ]; then
+        ifconfig rteth0 up
+        ifconfig rteth0-mac up
+        if [ $rt_loopback = "yes" ]; then
+            ifconfig rtlo up
+        fi
+    fi
+
+    insmod $modules_dir/rtcfg$module_ext >/dev/null
+    insmod $modules_dir/rtmac$module_ext >/dev/null
+    insmod $modules_dir/tdma$module_ext >/dev/null
+}
+
+up_rtnet()
+{
+   i=0
+   hw=($hw_slaves)
+   ip=($ip_slaves)
+   for ip_slave in $ip_slaves; do
+	$rtifconfig rteth$i up $master_ip_addr netmask $netmask hw ether ${hw[$i]}
+        $rtroute solicit ${ip[$i]} dev rteth$i
+        i=$((i+1))
+   done
+}
+
 
 
 do_start()
 {
-	echo "Start net script (RT and non RT) of kuka left and right arms and also switch !"
-	
-	echo "ifconfig down (non RT) ethX associate to kuka left and right !"
-	sudo ifconfig $ethX_associate_kuka_left down
-	sudo ifconfig $ethX_associate_kuka_right down
-	
-	echo "ifconfig down (non RT) ethX associated to switch !"
-	sudo ifconfig $ethX_associate_switch down
-	
-	echo "Load (RT) linux modules !"
-	sudo modprobe rt_e1000e
-    	sudo modprobe rtnet
-    	sudo modprobe rtipv4
-    	sudo modprobe rtcfg
-    	sudo modprobe rtudp
-    	sudo modprobe rtpacket
-    	sudo modprobe rt_loopback
-	
-	
-	
-	echo "**** Start (RT) config (rteth0) of kuka left !"
-	echo $pci_address_associate_kuka_left > /sys/bus/pci/devices/$pci_address_associate_kuka_left/driver/unbind
-	echo $pci_address_associate_kuka_left > /sys/bus/pci/drivers/$rt_driver/bind
-
-	echo "rtifconfig up rteth0 for kuka left !"
-	sudo $rtnet_prefix_bin/rtifconfig $rtethX_associate_kuka_left up $ip_address_master_rt_net netmask $netmask_associate_kuka_left hw ether $hw_ethX_associate_kuka_left
-	
-	echo "**** Start (RT) config (rteth1) of kuka right !"
-	echo $pci_address_associate_kuka_right > /sys/bus/pci/devices/$pci_address_associate_kuka_right/driver/unbind
-	echo $pci_address_associate_kuka_right > /sys/bus/pci/drivers/$rt_driver/bind
-
-	echo "rtifconfig up rteth1 for kuka right !"
-	sudo $rtnet_prefix_bin/rtifconfig $rtethX_associate_kuka_right up $ip_address_master_rt_net netmask $netmask_associate_kuka_right hw ether $hw_ethX_associate_kuka_right
-	
-	echo "Start rtlo !"
-	sudo $rtnet_prefix_bin/rtifconfig rtlo up $ip_address_loopback
-
-	echo "Add (RT) route to kuka left arm"
-	sleep 5
-	sudo $rtnet_prefix_bin/rtroute solicit $ip_address_kuka_left dev $rtethX_associate_kuka_left
-
-	echo "Add (RT) route to kuka right arm"
-	sleep 5
-	sudo $rtnet_prefix_bin/rtroute solicit $ip_address_kuka_right dev $rtethX_associate_kuka_right
-	
-	echo "Start ethX (non RT) associate to switch !"
-	sudo ifconfig $ethX_associate_switch up $ip_address_associate_switch netmask $netmask_associate_switch hw ether $hw_ethX_associate_switch $ip_address_associate_switch
-      
+  prepare_rtnet()
+  init_rtnet()
+  up_rtnet()
 }
+
 
 do_stop()
 {
-	echo "Stop net script (RT) !"
-	
-	echo "Stop ethX (RT) associate to kuka left !"
-	sudo $rtnet_prefix_bin/rtifconfig $rtethX_associate_kuka_left down
+  ifconfig rteth0 down 2>/dev/null
+  ifconfig rteth0-mac down 2>/dev/null
+  ifconfig rtlo down 2>/dev/null
 
-	sleep 1
-	echo '1' > /sys/bus/pci/devices/$pci_address_associate_kuka_left/remove
+  i=0
+  for ip_slave in $ip_slaves; do
+	$rtifconfig rteth$i down 2>/dev/null
+  	i=$((i+1))
+  done
 
-    	sleep 1
-	echo '1' > /sys/bus/pci/rescan
-	# These tests doesn' t work !
-	#echo '1' > sudo tee /sys/bus/pci/rescan
-    	#sudo sh -c "echo '1' > /sys/bus/pci/rescan"
-	
-	sleep 1    
-    	echo "Stop ethX (RT) associate to kuka right !"
-    	sudo $rtnet_prefix_bin/rtifconfig $rtethX_associate_kuka_right down
-    	
-	sleep 1
-	echo '1' > /sys/bus/pci/devices/$pci_address_associate_kuka_right/remove
+   if [ $rt_loopback = "yes" ]; then
+        $rtifconfig rtlo down 2>/dev/null
+   fi
 
-    	sleep 1
-	echo '1' > /sys/bus/pci/rescan
-    
-    	echo "Stop (RT) lo !"
-	sudo $rtnet_prefix_bin/rtifconfig rtlo down
+   for protocol in $rt_protocols; do
+        rmmod rt$protocol 2>/dev/null
+   done
 
-    	echo "Remove RT modules !"
-    	sudo rmmod rtcfg rt_loopback rt_e1000e rtpacket rtudp rtipv4 rtnet
-    
-    	echo "ifconfig up ethX associate to kuka arms left and right !"
-    	sudo ifconfig $ethX_associate_kuka_left up $ip_address_associate_kuka_left netmask $netmask_associate_kuka_left hw ether $hw_ethX_associate_kuka_left
-    	sudo ifconfig $ethX_associate_kuka_right up $ip_address_associate_kuka_right netmask $netmask_associate_kuka_right hw ether $hw_ethX_associate_kuka_right
+   rmmod tdma rtmac rtcfg rtcap rt_loopback $rt_driver rtipv4 rtnet 2>/dev/null
 
-    	echo "Add route (non RT) to kuka left arm !"
-    	sleep 5
-    	sudo route add -host $ip_address_kuka_left dev $ethX_associate_kuka_left
-	
-    	echo "Add route (non RT) to kuka right arm !"
-    	sleep 5
-    	sudo route add -host $ip_address_kuka_right dev $ethX_associate_kuka_right
+   for dev in $rebind_rt_nics; do
+            echo 1 > /sys/bus/pci/devices/$dev/remove
+   done
+   
+   if [ ! "$rebind_rt_nics" = "" ]; then
+            sleep 1
+            echo 1 > /sys/bus/pci/rescan
+   fi
+
+   insmod e1000e$module_ext
+
+   i=0
+   hw=($hw_slaves)
+   ip=($ip_slaves)
+   for ip_slave in $ip_slaves; do
+        ifconfig eth$i up $master_ip_addr netmask $netmask hw ether ${hw[$i]}
+        route add -host ${ip[$i]} dev rteth$i
+        i=$((i+2))
+   done
 }
 
+do_status()
+{
+  echo "rtifconfig -a"
+  $rtifconfig -a
+  echo "ifconfig -a"
+  ifconfig -a
+}
 
 if [ -c /dev/rtnet ] 
  then
@@ -171,17 +194,23 @@ if [ -c /dev/rtnet ]
    mknod /dev/rtnet c 10 240   
 fi
 
-
+# $0 correspond au nom du script lancé, $1 correspond au premier argument, $2 au deuxième argument ... 
 case "$1" in
    start)
-      do_start
-      ;;
+     do_start
+     ;;
    stop)
-      do_stop
-      ;;
+     do_stop
+     ;;
+   status)
+     do_status
+     ;;
+   restart|reload)
+     do_stop
+     do_start
+     ;;
    *)
-      echo "--> Usage: $0 {start|stop}"
-      exit 1
+     echo "Usage: $0 {start|stop|restart|reload|status}"
+     exit 1
 esac
-
 exit 0
