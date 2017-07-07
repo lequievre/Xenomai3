@@ -1,0 +1,61 @@
+
+# fix missing xenomai header
+ln -s /usr/xenomai_2_6_5/include/xeno_config.h /usr/xenomai_2_6_5/include/xenomai-config.h
+
+No 2 xenomai include dir !! need to verify !!
+for me -> 2 install /usr/xenomai/include (version 2.6.4) and /usr/xenomai_2_6_5/include (version 2.6.5)
+
+
+in directory /datas/Install_Xenomai/install_xenomai_2_6_5/orocos
+
+orocos toolchain 2.9
+====================
+
+mkdir -p orocos-2.9_ws/src
+cd orocos-2.9_ws/src/
+# Get all the packages
+wstool init  (create an empty '.rosinstall' file)
+wstool merge https://raw.githubusercontent.com/kuka-isir/rtt_lwr/rtt_lwr-2.0/lwr_utils/config/orocos_toolchain-2.9.rosinstall (merge 'orocos_toolchain-2.9.rosinstall' to local '.rosinstall')
+
+remark -> the file 'orocos_toolchain-2.9.rosinstall' contain :
+- git: {local-name: orocos_toolchain, uri: 'https://github.com/orocos-toolchain/orocos_toolchain.git',version: toolchain-2.9}
+- git: {local-name: metaruby-metarelease, uri: 'https://github.com/orocos-gbp/metaruby-release.git', version: 'release/indigo/metaruby'}
+
+
+
+wstool update -j2  (After you've created your workspace and added repositories, you should update it to download the latest versions.)
+
+# Get the latest updates (OPTIONAL)
+cd orocos_toolchain
+git submodule foreach git checkout toolchain-2.9 (Easy way to set of all git submodules the specific branch toolchain-2.9)
+git submodule foreach git pull (Easy way to pull latest of all git submodules on the specific branch toolchain-2.9)
+
+# Configure the workspace (go to the root 'orocos-2.9_ws')
+cd ../..
+source /opt/ros/indigo/setup.bash
+rosdep install --from-paths src --ignore-src --rosdistro indigo -y -r (check and install for dependencies outside the workspace (e.g. system dependencies))
+catkin config --init --install --extend /opt/ros/indigo/ --cmake-args -DCMAKE_BUILD_TYPE=Release  (Configure the workspace)
+# Build
+catkin build
+
+rtt_ros_integration 2.9
+=======================
+
+mkdir -p rtt_ros-2.9_ws/src
+cd rtt_ros-2.9_ws/src
+
+# Get all the packages
+wstool init
+wstool merge https://github.com/kuka-isir/rtt_lwr/raw/rtt_lwr-2.0/lwr_utils/config/rtt_ros_integration-2.9.rosinstall
+wstool update -j2
+# Configure the workspace
+cd .. (go to the root 'rtt_ros-2.9_ws')
+# Install dependencies
+source ../orocos-2.9_ws/install/setup.bash
+rosdep install -q --from-paths src --ignore-src --rosdistro indigo -y -r
+catkin config --init --install --extend ../orocos-2.9_ws/install --cmake-args -DCMAKE_BUILD_TYPE=Release
+# Build (this can take a while)
+catkin build
+
+
+
